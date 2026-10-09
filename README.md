@@ -2,4 +2,3 @@
  
  
 This repository documents my DevOps learning journey
-
