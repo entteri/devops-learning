@@ -1,4 +1,7 @@
 .git/
+.github/
+*.md
+app/test_*.py
 .venv/
 venv/
 __pycache__/
