@@ -21,3 +21,45 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -v
+
+  docker-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build --tag devops-learning:ci .
+
+      - name: Start test container
+        run: |
+          docker run --detach \
+            --cidfile "$RUNNER_TEMP/docker-ci.cid" \
+            --publish 127.0.0.1:8000:8000 \
+            devops-learning:ci
+
+      - name: Test HTTP endpoints
+        run: |
+          set -euo pipefail
+          curl_args=(--fail --silent --show-error --retry 12 --retry-delay 1 --retry-connrefused --retry-max-time 30 --max-time 3)
+
+          health=$(curl "${curl_args[@]}" http://127.0.0.1:8000/health)
+          python3 -c 'import json, sys; assert json.load(sys.stdin) == {"status": "ok"}' <<< "$health"
+
+          info=$(curl "${curl_args[@]}" http://127.0.0.1:8000/info)
+          python3 -c 'import json, sys; assert json.load(sys.stdin) == {"name": "devops-learning", "version": "0.1.0", "environment": "development"}' <<< "$info"
+
+      - name: Verify PID 1 is non-root
+        run: |
+          set -euo pipefail
+          container_id=$(cat "$RUNNER_TEMP/docker-ci.cid")
+          uid=$(docker exec "$container_id" awk '/^Uid:/ { print $2 }' /proc/1/status)
+          test "$uid" -eq 10001
+
+      - name: Remove test container
+        if: always()
+        run: |
+          if [[ -s "$RUNNER_TEMP/docker-ci.cid" ]]; then
+            docker rm --force "$(cat "$RUNNER_TEMP/docker-ci.cid")"
+          fi
